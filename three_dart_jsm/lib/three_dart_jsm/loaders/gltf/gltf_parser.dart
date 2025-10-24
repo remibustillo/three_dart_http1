@@ -34,19 +34,34 @@ class GLTFParser {
     plugins = {};
     this.options = options ?? {};
 
+    // loader object cache
     cache = GLTFRegistry();
 
     textureCache = {};
     sourceCache = {};
 
+    // associations between Three.js objects and glTF elements
     associations = {};
+
+    // BufferGeometry caching
     primitiveCache = {};
+
+    // Object3D instance caches
     meshCache = {"refs": {}, "uses": {}};
     cameraCache = {"refs": {}, "uses": {}};
     lightCache = {"refs": {}, "uses": {}};
+
+    // Track node names, to ensure no duplicates
     nodeNamesUsed = {};
 
+    // Use an ImageBitmapLoader if imageBitmaps are supported. Moves much of the
+    // expensive work of uploading a texture to the GPU off the main thread.
+    // if ( createImageBitmap != null && /Firefox/.test( navigator.userAgent ) == false ) {
+    //   this.textureLoader = new ImageBitmapLoader( this.options.manager );
+    // } else {
     textureLoader = TextureLoader(this.options["manager"]);
+    // }
+
     textureLoader.setCrossOrigin(this.options["crossOrigin"]);
     textureLoader.setRequestHeader(this.options["requestHeader"]);
 
@@ -68,25 +83,18 @@ class GLTFParser {
     this.plugins = plugins;
   }
 
-  /// Parse le modèle GLTF principal
   parse(onLoad, onError) async {
     var parser = this;
     var json = this.json;
     var extensions = this.extensions;
 
+    // Clear the loader cache
     cache.removeAll();
 
-    // Marquer les définitions spéciales
-    await _invokeAll((ext) async {
-  if (ext is GLTFParser) {
-    ext._markDefs();
-  } else if (ext is dynamic && ext is! Function) {
-    try {
-      if (ext._markDefs != null) ext._markDefs();
-    } catch (_) {}
-  }
-  return null;
-});
+    // Mark the special nodes/meshes in json for efficient parse
+    _invokeAll((ext) {
+      return ext._markDefs != null && ext._markDefs() != null;
+    });
 
     final scenes = await getDependencies('scene');
     final animations = await getDependencies('animation');
@@ -103,70 +111,77 @@ class GLTFParser {
     };
 
     addUnknownExtensionsToUserData(extensions, result, json);
+
     assignExtrasToUserData(result, json);
 
     onLoad(result);
   }
 
-  /// Marque les nodes et meshes spéciaux dans le JSON
-  void _markDefs() {
-    var nodeDefs = json["nodes"] ?? [];
-    var skinDefs = json["skins"] ?? [];
-    var meshDefs = json["meshes"] ?? [];
+  /// Marks the special nodes/meshes in json for efficient parse.
+  // _markDefs() {
+  //   var nodeDefs = json["nodes"] ?? [];
+  //   var skinDefs = json["skins"] ?? [];
+  //   var meshDefs = json["meshes"] ?? [];
 
-    // Marquer les bones via skins
-    for (var skinIndex = 0; skinIndex < skinDefs.length; skinIndex++) {
-      var joints = skinDefs[skinIndex]["joints"];
-      for (var j = 0; j < joints.length; j++) {
-        nodeDefs[joints[j]]["isBone"] = true;
-      }
-    }
+  //   // Nothing in the node definition indicates whether it is a Bone or an
+  //   // Object3D. Use the skins' joint references to mark bones.
+  //   for (var skinIndex = 0, skinLength = skinDefs.length; skinIndex < skinLength; skinIndex++) {
+  //     var joints = skinDefs[skinIndex]["joints"];
 
-    // Marquer les références (mesh, camera)
-    for (var nodeIndex = 0; nodeIndex < nodeDefs.length; nodeIndex++) {
-      Map<String, dynamic> nodeDef = nodeDefs[nodeIndex];
+  //     for (var i = 0, il = joints.length; i < il; i++) {
+  //       nodeDefs[joints[i]]["isBone"] = true;
+  //     }
+  //   }
 
-      if (nodeDef["mesh"] != null) {
-        _addNodeRef(meshCache, nodeDef["mesh"]);
+  //   // Iterate over all nodes, marking references to shared resources,
+  //   // as well as skeleton joints.
+  //   for (var nodeIndex = 0, nodeLength = nodeDefs.length; nodeIndex < nodeLength; nodeIndex++) {
+  //     Map<String, dynamic> nodeDef = nodeDefs[nodeIndex];
 
-        if (nodeDef["skin"] != null) {
-          meshDefs[nodeDef["mesh"]]["isSkinnedMesh"] = true;
-        }
-      }
+  //     if (nodeDef["mesh"] != null) {
+  //       _addNodeRef(meshCache, nodeDef["mesh"]);
 
-      if (nodeDef["camera"] != null) {
-        _addNodeRef(cameraCache, nodeDef["camera"]);
-      }
-    }
-  }
+  //       // Nothing in the mesh definition indicates whether it is
+  //       // a SkinnedMesh or Mesh. Use the node's mesh reference
+  //       // to mark SkinnedMesh if node has skin.
+  //       if (nodeDef["skin"] != null) {
+  //         meshDefs[nodeDef["mesh"]]["isSkinnedMesh"] = true;
+  //       }
+  //     }
 
-  /// Ajoute une référence à un nœud (mesh, caméra, etc.)
-  void _addNodeRef(cache, index) {
-    cache["refs"] ??= {};
-    cache["uses"] ??= {};
+  //     if (nodeDef["camera"] != null) {
+  //       _addNodeRef(cameraCache, nodeDef["camera"]);
+  //     }
+  //   }
+  // }
 
-    if (cache["refs"][index] == null) {
-      cache["refs"][index] = 0;
-      cache["uses"][index] = 0;
-    }
+  /// Counts references to shared node / Object3D resources. These resources
+  /// can be reused, or "instantiated", at multiple nodes in the scene
+  /// hierarchy. Mesh, Camera, and Light instances are instantiated and must
+  /// be marked. Non-scenegraph resources (like Materials, Geometries, and
+  /// Textures) can be reused directly and are not marked here.
+  ///
+  /// Example: CesiumMilkTruck sample model reuses "Wheel" meshes.
+  // _addNodeRef(cache, index) {
+  //   if (index == null) return;
 
-    cache["refs"][index]++;
-  }
+  //   if (cache["refs"][index] == null) {
+  //     cache["refs"][index] = cache["uses"][index] = 0;
+  //   }
 
-  /// Retourne une référence à une ressource partagée
+  //   cache["refs"][index]++;
+  // }
+
+  /// Returns a reference to a shared resource, cloning it if necessary.
   _getNodeRef(cache, index, object) {
-  cache["refs"] ??= {};
-  cache["uses"] ??= {};
+    if (cache["refs"][index] <= 1) return object;
 
-  cache["refs"][index] ??= 1;
-  cache["uses"][index] ??= 0;
+    var ref = object.clone();
 
-  if (cache["refs"][index]! <= 1) return object;
+    ref.name += '_instance_${(cache["uses"][index]++)}';
 
-  var ref = object.clone();
-  ref.name += '_instance_${cache["uses"][index]!++}';
-  return ref;
-}
+    return ref;
+  }
 
   _invokeOne(Function func) async {
     var extensions = plugins.values.toList();
@@ -180,17 +195,18 @@ class GLTFParser {
 
   _invokeAll(Function func) async {
     var extensions = plugins.values.toList();
-    extensions.insert(0, this);
+    unshift(extensions, this);
 
     var results = [];
+
     for (var i = 0; i < extensions.length; i++) {
       var result = await func(extensions[i]);
+
       if (result != null) results.add(result);
     }
 
     return results;
   }
-
 
   /// Requests the specified dependency asynchronously, with caching.
   /// @param {string} type
