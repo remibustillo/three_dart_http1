@@ -78,13 +78,15 @@ class GLTFParser {
 
     // Marquer les définitions spéciales
     await _invokeAll((ext) async {
-      if (ext is GLTFParser) {
-        ext._markDefs();
-      } else if (ext._markDefs != null) {
-        ext._markDefs();
-      }
-      return null;
-    });
+  if (ext is GLTFParser) {
+    ext._markDefs();
+  } else if (ext is dynamic && ext is! Function) {
+    try {
+      if (ext._markDefs != null) ext._markDefs();
+    } catch (_) {}
+  }
+  return null;
+});
 
     final scenes = await getDependencies('scene');
     final animations = await getDependencies('animation');
@@ -153,20 +155,18 @@ class GLTFParser {
 
   /// Retourne une référence à une ressource partagée
   _getNodeRef(cache, index, object) {
-    cache["refs"] ??= {};
-    cache["uses"] ??= {};
+  cache["refs"] ??= {};
+  cache["uses"] ??= {};
 
-    if (cache["refs"][index] == null) {
-      cache["refs"][index] = 1;
-      cache["uses"][index] = 0;
-    }
+  cache["refs"][index] ??= 1;
+  cache["uses"][index] ??= 0;
 
-    if (cache["refs"][index] <= 1) return object;
+  if (cache["refs"][index]! <= 1) return object;
 
-    var ref = object.clone();
-    ref.name += '_instance_${(cache["uses"][index]++)}';
-    return ref;
-  }
+  var ref = object.clone();
+  ref.name += '_instance_${cache["uses"][index]!++}';
+  return ref;
+}
 
   _invokeOne(Function func) async {
     var extensions = plugins.values.toList();
