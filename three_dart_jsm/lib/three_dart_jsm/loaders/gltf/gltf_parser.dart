@@ -92,9 +92,7 @@ class GLTFParser {
     cache.removeAll();
 
     // Mark the special nodes/meshes in json for efficient parse
-    _invokeAll((ext) {
-      return ext._markDefs != null && ext._markDefs() != null;
-    });
+await _markDefs();  
 
     final scenes = await getDependencies('scene');
     final animations = await getDependencies('animation');
@@ -174,14 +172,13 @@ class GLTFParser {
 
   /// Returns a reference to a shared resource, cloning it if necessary.
   _getNodeRef(cache, index, object) {
-    if (cache["refs"][index] <= 1) return object;
+  final refs = cache["refs"][index];
+  if (refs == null || refs <= 1) return object;  // ✅ garde-fou
 
-    var ref = object.clone();
-
-    ref.name += '_instance_${(cache["uses"][index]++)}';
-
-    return ref;
-  }
+  var ref = object.clone();
+  ref.name += '_instance_${(cache["uses"][index]++)}';
+  return ref;
+}
 
   _invokeOne(Function func) async {
     var extensions = plugins.values.toList();
