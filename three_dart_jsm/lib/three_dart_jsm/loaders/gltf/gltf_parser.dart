@@ -118,42 +118,42 @@ class GLTFParser {
   }
 
   /// Marks the special nodes/meshes in json for efficient parse.
-  // _markDefs() {
-  //   var nodeDefs = json["nodes"] ?? [];
-  //   var skinDefs = json["skins"] ?? [];
-  //   var meshDefs = json["meshes"] ?? [];
+   _markDefs() {
+     var nodeDefs = json["nodes"] ?? [];
+     var skinDefs = json["skins"] ?? [];
+     var meshDefs = json["meshes"] ?? [];
 
-  //   // Nothing in the node definition indicates whether it is a Bone or an
-  //   // Object3D. Use the skins' joint references to mark bones.
-  //   for (var skinIndex = 0, skinLength = skinDefs.length; skinIndex < skinLength; skinIndex++) {
-  //     var joints = skinDefs[skinIndex]["joints"];
+     // Nothing in the node definition indicates whether it is a Bone or an
+     // Object3D. Use the skins' joint references to mark bones.
+     for (var skinIndex = 0, skinLength = skinDefs.length; skinIndex < skinLength; skinIndex++) {
+       var joints = skinDefs[skinIndex]["joints"];
 
-  //     for (var i = 0, il = joints.length; i < il; i++) {
-  //       nodeDefs[joints[i]]["isBone"] = true;
-  //     }
-  //   }
+       for (var i = 0, il = joints.length; i < il; i++) {
+         nodeDefs[joints[i]]["isBone"] = true;
+       }
+     }
 
-  //   // Iterate over all nodes, marking references to shared resources,
-  //   // as well as skeleton joints.
-  //   for (var nodeIndex = 0, nodeLength = nodeDefs.length; nodeIndex < nodeLength; nodeIndex++) {
-  //     Map<String, dynamic> nodeDef = nodeDefs[nodeIndex];
+     // Iterate over all nodes, marking references to shared resources,
+     // as well as skeleton joints.
+     for (var nodeIndex = 0, nodeLength = nodeDefs.length; nodeIndex < nodeLength; nodeIndex++) {
+       Map<String, dynamic> nodeDef = nodeDefs[nodeIndex];
 
-  //     if (nodeDef["mesh"] != null) {
-  //       _addNodeRef(meshCache, nodeDef["mesh"]);
+       if (nodeDef["mesh"] != null) {
+         _addNodeRef(meshCache, nodeDef["mesh"]);
 
-  //       // Nothing in the mesh definition indicates whether it is
-  //       // a SkinnedMesh or Mesh. Use the node's mesh reference
-  //       // to mark SkinnedMesh if node has skin.
-  //       if (nodeDef["skin"] != null) {
-  //         meshDefs[nodeDef["mesh"]]["isSkinnedMesh"] = true;
-  //       }
-  //     }
+         // Nothing in the mesh definition indicates whether it is
+         // a SkinnedMesh or Mesh. Use the node's mesh reference
+         // to mark SkinnedMesh if node has skin.
+         if (nodeDef["skin"] != null) {
+           meshDefs[nodeDef["mesh"]]["isSkinnedMesh"] = true;
+         }
+       }
 
-  //     if (nodeDef["camera"] != null) {
-  //       _addNodeRef(cameraCache, nodeDef["camera"]);
-  //     }
-  //   }
-  // }
+       if (nodeDef["camera"] != null) {
+         _addNodeRef(cameraCache, nodeDef["camera"]);
+       }
+     }
+   }
 
   /// Counts references to shared node / Object3D resources. These resources
   /// can be reused, or "instantiated", at multiple nodes in the scene
@@ -162,15 +162,15 @@ class GLTFParser {
   /// Textures) can be reused directly and are not marked here.
   ///
   /// Example: CesiumMilkTruck sample model reuses "Wheel" meshes.
-  // _addNodeRef(cache, index) {
-  //   if (index == null) return;
+   _addNodeRef(cache, index) {
+     if (index == null) return;
 
-  //   if (cache["refs"][index] == null) {
-  //     cache["refs"][index] = cache["uses"][index] = 0;
-  //   }
+     if (cache["refs"][index] == null) {
+       cache["refs"][index] = cache["uses"][index] = 0;
+     }
 
-  //   cache["refs"][index]++;
-  // }
+     cache["refs"][index]++;
+   }
 
   /// Returns a reference to a shared resource, cloning it if necessary.
   _getNodeRef(cache, index, object) {
